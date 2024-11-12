@@ -74,18 +74,17 @@ def f1_m(y_true, y_pred):
     return 2*((precision*recall)/(precision+recall+K.epsilon()))
 
 
-def model_predict(model, val_data):
+def model_predict(model, data):
     y_true = []
     y_pred = []
-    for x_batch, y_batch in val_data:
+    for x_batch, y_batch in data:
         y_pred_batch = model.predict(x_batch, verbose=0)
         y_true.extend(y_batch.numpy())
         y_pred.extend(np.argmax(y_pred_batch, axis=1))
     return y_true, y_pred
 
 
-def evaluate_metrics(model, val_data, cv_fold):
-    y_true, y_pred = model_predict(model, val_data)
+def evaluate_metrics(y_true, y_pred):
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
 
@@ -93,15 +92,13 @@ def evaluate_metrics(model, val_data, cv_fold):
     val_precision = precision_m(y_true, y_pred).numpy()
     val_recall = recall_m(y_true, y_pred).numpy()
     return {
-        'cv': cv_fold,
         'f1': float(val_f1),
         'precision': float(val_precision),
         'recall': float(val_recall),
     }
 
 
-def evaluate_confusion_matrix(model, val_data):
-    y_true, y_pred = model_predict(model, val_data)
+def evaluate_confusion_matrix(y_true, y_pred):
     cm = confusion_matrix(y_true, y_pred)
     return cm
 
@@ -110,30 +107,29 @@ def load_metrics(metrics_file):
     if metrics_file.is_file():
         with open(metrics_file, 'r') as f:
             return json.load(f)
-    return []
+    return {}
 
 
-def save_metrics(fold_metrics, metrics_file):
+def save_metrics(fold_metrics, metrics_file, cv_fold):
     metrics = load_metrics(metrics_file)
-    metrics = [d for d in metrics if d.get('cv') != 'summary']
-    metrics.append(fold_metrics)
-    metrics = sorted(metrics, key=lambda x: x['cv'])
+    metrics.pop('summary', None)
+    metrics[f"cv{cv_fold}"] = fold_metrics
+    metrics = dict(sorted(metrics.items(), key=lambda x: x[0]))
 
     num_folds = len(metrics)
     if num_folds > 0:
         summary_metrics = {
-            'cv': 'summary',
-            'f1_mean': np.mean([m['f1'] for m in metrics]),
-            'f1_max': np.max([m['f1'] for m in metrics]),
-            'f1_min': np.min([m['f1'] for m in metrics]),
-            'precision_mean': np.mean([m['precision'] for m in metrics]),
-            'precision_max': np.max([m['precision'] for m in metrics]),
-            'precision_min': np.min([m['precision'] for m in metrics]),
-            'recall_mean': np.mean([m['recall'] for m in metrics]),
-            'recall_max': np.max([m['recall'] for m in metrics]),
-            'recall_min': np.min([m['recall'] for m in metrics]),
+            'f1_mean': np.mean([m['f1'] for m in metrics.values()]),
+            'f1_max': np.max([m['f1'] for m in metrics.values()]),
+            'f1_min': np.min([m['f1'] for m in metrics.values()]),
+            'precision_mean': np.mean([m['precision'] for m in metrics.values()]),
+            'precision_max': np.max([m['precision'] for m in metrics.values()]),
+            'precision_min': np.min([m['precision'] for m in metrics.values()]),
+            'recall_mean': np.mean([m['recall'] for m in metrics.values()]),
+            'recall_max': np.max([m['recall'] for m in metrics.values()]),
+            'recall_min': np.min([m['recall'] for m in metrics.values()]),
         }
-        metrics.insert(0, summary_metrics)
+        metrics['summary'] = summary_metrics
 
     with open(metrics_file, 'w') as f:
         json.dump(metrics, f, indent=4)
