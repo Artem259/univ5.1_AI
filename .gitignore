@@ -1,0 +1,11 @@
+/data/
+/crop/
+
+/venv/
+/.venv/
+/.idea/
+
+**/venv/
+**/.venv/
+**/.idea/
+**/.ipynb_checkpoints/
