@@ -5,73 +5,55 @@ import tensorflow.keras.backend as K
 from sklearn.metrics import confusion_matrix
 
 
-# def recall_m(y_true, y_pred):  # TODO
-#     y_true = tf.one_hot(tf.cast(y_true, tf.int32), depth=classes_num)
-#     if len(y_pred.shape) == 1:
-#         y_pred = tf.one_hot(tf.cast(y_pred, tf.int32), depth=classes_num)
-#     y_true = tf.cast(y_true, tf.float32)
-#     y_pred = tf.cast(y_pred, tf.float32)
-#
-#     true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
-#     possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
-#     recall = true_positives / (possible_positives + K.epsilon())
-#     return recall
-#
-#
-# def precision_m(y_true, y_pred):
-#     y_true = tf.one_hot(tf.cast(y_true, tf.int32), depth=classes_num)
-#     if len(y_pred.shape) == 1:
-#         y_pred = tf.one_hot(tf.cast(y_pred, tf.int32), depth=classes_num)
-#     y_true = tf.cast(y_true, tf.float32)
-#     y_pred = tf.cast(y_pred, tf.float32)
-#
-#     true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
-#     predicted_positives = K.sum(K.round(K.clip(y_pred, 0, 1)))
-#     precision = true_positives / (predicted_positives + K.epsilon())
-#     return precision
-
-def recall_m(y_true, y_pred):
-    # One-hot encoding for y_true and y_pred
-    y_true = tf.one_hot(tf.cast(y_true, tf.int32), depth=classes_num)
-    if len(y_pred.shape) == 1:
-        y_pred = tf.one_hot(tf.cast(y_pred, tf.int32), depth=classes_num)
-
-    # Cast to float32 for calculation
-    y_true = tf.cast(y_true, tf.float32)
-    y_pred = tf.cast(y_pred, tf.float32)
-
-    # Calculate true positives and possible positives (i.e., actual positives)
-    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
-    possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
-
-    # Recall = TP / (TP + FN)
-    recall = true_positives / (possible_positives + K.epsilon())
-    return recall
+def _cast_y(y_true, y_pred):
+    if len(y_pred.shape) > 1:
+        y_pred = tf.argmax(y_pred, axis=-1, output_type=tf.int64)
+    y_true = tf.cast(y_true, tf.int64)
+    y_pred = tf.cast(y_pred, tf.int64)
+    return y_true, y_pred
 
 
-def precision_m(y_true, y_pred):
-    # One-hot encoding for y_true and y_pred
-    y_true = tf.one_hot(tf.cast(y_true, tf.int32), depth=classes_num)
-    if len(y_pred.shape) == 1:
-        y_pred = tf.one_hot(tf.cast(y_pred, tf.int32), depth=classes_num)
+def precision_macro(y_true, y_pred):
+    y_true, y_pred = _cast_y(y_true, y_pred)
 
-    # Cast to float32 for calculation
-    y_true = tf.cast(y_true, tf.float32)
-    y_pred = tf.cast(y_pred, tf.float32)
+    class_precisions = []
+    for c in range(classes_num):
+        true_positives = tf.reduce_sum(tf.cast((y_pred == c) & (y_true == c), tf.float32))
+        predicted_positives = tf.reduce_sum(tf.cast(y_pred == c, tf.float32))
 
-    # Calculate true positives and predicted positives (i.e., predicted positives)
-    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
-    predicted_positives = K.sum(K.round(K.clip(y_pred, 0, 1)))
-
-    # Precision = TP / (TP + FP)
-    precision = true_positives / (predicted_positives + K.epsilon())
-    return precision
+        precision = true_positives / (predicted_positives + K.epsilon())
+        class_precisions.append(precision)
+    return tf.reduce_mean(class_precisions)
 
 
-def f1_m(y_true, y_pred):
-    precision = precision_m(y_true, y_pred)
-    recall = recall_m(y_true, y_pred)
-    return 2*((precision*recall)/(precision+recall+K.epsilon()))
+def recall_macro(y_true, y_pred):
+    y_true, y_pred = _cast_y(y_true, y_pred)
+
+    class_recalls = []
+    for c in range(classes_num):
+        true_positives = tf.reduce_sum(tf.cast((y_pred == c) & (y_true == c), tf.float32))
+        possible_positives = tf.reduce_sum(tf.cast(y_true == c, tf.float32))
+
+        recall = true_positives / (possible_positives + K.epsilon())
+        class_recalls.append(recall)
+    return tf.reduce_mean(class_recalls)
+
+
+def f1_macro(y_true, y_pred):
+    y_true, y_pred = _cast_y(y_true, y_pred)
+
+    class_f1_scores = []
+    for c in range(classes_num):
+        true_positives = tf.reduce_sum(tf.cast((y_pred == c) & (y_true == c), tf.float32))
+        predicted_positives = tf.reduce_sum(tf.cast(y_pred == c, tf.float32))
+        possible_positives = tf.reduce_sum(tf.cast(y_true == c, tf.float32))
+
+        precision = true_positives / (predicted_positives + K.epsilon())
+        recall = true_positives / (possible_positives + K.epsilon())
+
+        f1 = 2 * (precision * recall) / (precision + recall + K.epsilon())
+        class_f1_scores.append(f1)
+    return tf.reduce_mean(class_f1_scores)
 
 
 def model_predict(model, data):
@@ -81,16 +63,13 @@ def model_predict(model, data):
         y_pred_batch = model.predict(x_batch, verbose=0)
         y_true.extend(y_batch.numpy())
         y_pred.extend(np.argmax(y_pred_batch, axis=1))
-    return y_true, y_pred
+    return np.array(y_true), np.array(y_pred)
 
 
 def evaluate_metrics(y_true, y_pred):
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
-
-    val_f1 = f1_m(y_true, y_pred).numpy()
-    val_precision = precision_m(y_true, y_pred).numpy()
-    val_recall = recall_m(y_true, y_pred).numpy()
+    val_f1 = f1_macro(y_true, y_pred).numpy()
+    val_precision = precision_macro(y_true, y_pred).numpy()
+    val_recall = recall_macro(y_true, y_pred).numpy()
     return {
         'f1': float(val_f1),
         'precision': float(val_precision),
@@ -135,4 +114,4 @@ def save_metrics(fold_metrics, metrics_file, cv_fold):
         json.dump(metrics, f, indent=4)
 
 
-classes_num = None
+classes_num = 0
