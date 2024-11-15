@@ -3,9 +3,12 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from sklearn.metrics import confusion_matrix
+from tensorflow.keras.metrics import Metric
 
 
 def _cast_y(y_true, y_pred):
+    if len(y_true.shape) > 1:
+        y_true = tf.squeeze(y_true, axis=-1)
     if len(y_pred.shape) > 1:
         y_pred = tf.argmax(y_pred, axis=-1, output_type=tf.int64)
     y_true = tf.cast(y_true, tf.int64)
@@ -13,47 +16,96 @@ def _cast_y(y_true, y_pred):
     return y_true, y_pred
 
 
-def precision_macro(y_true, y_pred):
-    y_true, y_pred = _cast_y(y_true, y_pred)
+class PrecisionMacro(Metric):
+    def __init__(self, classes_num, name='precision_macro', **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.num_classes = classes_num
+        self.confusion_matrix = self.add_weight(
+            shape=(classes_num, classes_num),
+            initializer='zeros',
+            dtype=tf.int64,
+            name='confusion_matrix'
+        )
 
-    class_precisions = []
-    for c in range(classes_num):
-        true_positives = tf.reduce_sum(tf.cast((y_pred == c) & (y_true == c), tf.float32))
-        predicted_positives = tf.reduce_sum(tf.cast(y_pred == c, tf.float32))
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_true, y_pred = _cast_y(y_true, y_pred)
+        batch_confusion_matrix = tf.math.confusion_matrix(
+            y_true, y_pred, num_classes=self.num_classes, dtype=tf.int64
+        )
+        self.confusion_matrix.assign_add(batch_confusion_matrix)
 
-        precision = true_positives / (predicted_positives + K.epsilon())
-        class_precisions.append(precision)
-    return tf.reduce_mean(class_precisions)
+    def result(self):
+        true_positives = tf.cast(tf.linalg.diag_part(self.confusion_matrix), tf.float32)
+        predicted_positives = tf.cast(tf.reduce_sum(self.confusion_matrix, axis=0), tf.float32)
+        precision_per_class = true_positives / (predicted_positives + K.epsilon())
+        return tf.reduce_mean(precision_per_class)
 
-
-def recall_macro(y_true, y_pred):
-    y_true, y_pred = _cast_y(y_true, y_pred)
-
-    class_recalls = []
-    for c in range(classes_num):
-        true_positives = tf.reduce_sum(tf.cast((y_pred == c) & (y_true == c), tf.float32))
-        possible_positives = tf.reduce_sum(tf.cast(y_true == c, tf.float32))
-
-        recall = true_positives / (possible_positives + K.epsilon())
-        class_recalls.append(recall)
-    return tf.reduce_mean(class_recalls)
+    def reset_state(self):
+        self.confusion_matrix.assign(tf.zeros_like(self.confusion_matrix))
 
 
-def f1_macro(y_true, y_pred):
-    y_true, y_pred = _cast_y(y_true, y_pred)
+class RecallMacro(Metric):
+    def __init__(self, classes_num, name='recall_macro', **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.num_classes = classes_num
+        self.confusion_matrix = self.add_weight(
+            shape=(classes_num, classes_num),
+            initializer='zeros',
+            dtype=tf.int64,
+            name='confusion_matrix'
+        )
 
-    class_f1_scores = []
-    for c in range(classes_num):
-        true_positives = tf.reduce_sum(tf.cast((y_pred == c) & (y_true == c), tf.float32))
-        predicted_positives = tf.reduce_sum(tf.cast(y_pred == c, tf.float32))
-        possible_positives = tf.reduce_sum(tf.cast(y_true == c, tf.float32))
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_true, y_pred = _cast_y(y_true, y_pred)
+        batch_confusion_matrix = tf.math.confusion_matrix(
+            y_true, y_pred, num_classes=self.num_classes, dtype=tf.int64
+        )
+        self.confusion_matrix.assign_add(batch_confusion_matrix)
 
-        precision = true_positives / (predicted_positives + K.epsilon())
-        recall = true_positives / (possible_positives + K.epsilon())
+    def result(self):
+        true_positives = tf.cast(tf.linalg.diag_part(self.confusion_matrix), tf.float32)
+        actual_positives = tf.cast(tf.reduce_sum(self.confusion_matrix, axis=1), tf.float32)
+        recall_per_class = true_positives / (actual_positives + K.epsilon())
+        return tf.reduce_mean(recall_per_class)
 
-        f1 = 2 * (precision * recall) / (precision + recall + K.epsilon())
-        class_f1_scores.append(f1)
-    return tf.reduce_mean(class_f1_scores)
+    def reset_state(self):
+        self.confusion_matrix.assign(tf.zeros_like(self.confusion_matrix))
+
+
+class F1Macro(Metric):
+    def __init__(self, classes_num, name='f1_macro', **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.num_classes = classes_num
+        self.confusion_matrix = self.add_weight(
+            shape=(classes_num, classes_num),
+            initializer='zeros',
+            dtype=tf.int64,
+            name='confusion_matrix'
+        )
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_true, y_pred = _cast_y(y_true, y_pred)
+        batch_confusion_matrix = tf.math.confusion_matrix(
+            y_true, y_pred, num_classes=self.num_classes, dtype=tf.int64
+        )
+        self.confusion_matrix.assign_add(batch_confusion_matrix)
+
+    def result(self):
+        true_positives = tf.cast(tf.linalg.diag_part(self.confusion_matrix), tf.float32)
+        predicted_positives = tf.cast(tf.reduce_sum(self.confusion_matrix, axis=0), tf.float32)
+        actual_positives = tf.cast(tf.reduce_sum(self.confusion_matrix, axis=1), tf.float32)
+
+        precision_per_class = true_positives / (predicted_positives + K.epsilon())
+        recall_per_class = true_positives / (actual_positives + K.epsilon())
+
+        f1_per_class = 2 * (precision_per_class * recall_per_class) / (
+                precision_per_class + recall_per_class + K.epsilon()
+        )
+
+        return tf.reduce_mean(f1_per_class)
+
+    def reset_state(self):
+        self.confusion_matrix.assign(tf.zeros_like(self.confusion_matrix))
 
 
 def model_predict(model, data):
@@ -66,14 +118,13 @@ def model_predict(model, data):
     return np.array(y_true), np.array(y_pred)
 
 
-def evaluate_metrics(y_true, y_pred):
-    val_f1 = f1_macro(y_true, y_pred).numpy()
-    val_precision = precision_macro(y_true, y_pred).numpy()
-    val_recall = recall_macro(y_true, y_pred).numpy()
+def evaluate_metrics(model, test_data):
+    ev_metrics = model.evaluate(test_data, verbose=0)
+    ev_dict = dict(zip(model.metrics_names, ev_metrics))
     return {
-        'f1': float(val_f1),
-        'precision': float(val_precision),
-        'recall': float(val_recall),
+        'f1': ev_dict['f1_macro'],
+        'precision': ev_dict['precision_macro'],
+        'recall': ev_dict['recall_macro'],
     }
 
 
@@ -112,6 +163,3 @@ def save_metrics(fold_metrics, metrics_file, cv_fold):
 
     with open(metrics_file, 'w') as f:
         json.dump(metrics, f, indent=4)
-
-
-classes_num = 0
