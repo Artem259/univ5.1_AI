@@ -23,6 +23,7 @@ def load_data(
             batch_size=batch_size,
             image_size=(image_size, image_size),
             shuffle=True,
+            seed=42,
         )
 
     val_data = load_fold(val_fold)
