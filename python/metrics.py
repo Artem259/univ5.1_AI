@@ -17,7 +17,7 @@ def _cast_y(y_true, y_pred):
 
 
 class PrecisionMacro(Metric):
-    def __init__(self, classes_num, name='precision_macro', **kwargs):
+    def __init__(self, classes_num, name='precision', **kwargs):
         super().__init__(name=name, **kwargs)
         self.num_classes = classes_num
         self.confusion_matrix = self.add_weight(
@@ -45,7 +45,7 @@ class PrecisionMacro(Metric):
 
 
 class RecallMacro(Metric):
-    def __init__(self, classes_num, name='recall_macro', **kwargs):
+    def __init__(self, classes_num, name='recall', **kwargs):
         super().__init__(name=name, **kwargs)
         self.num_classes = classes_num
         self.confusion_matrix = self.add_weight(
@@ -73,7 +73,7 @@ class RecallMacro(Metric):
 
 
 class F1Macro(Metric):
-    def __init__(self, classes_num, name='f1_macro', **kwargs):
+    def __init__(self, classes_num, name='f1', **kwargs):
         super().__init__(name=name, **kwargs)
         self.num_classes = classes_num
         self.confusion_matrix = self.add_weight(
@@ -122,9 +122,9 @@ def evaluate_metrics(model, test_data):
     ev_metrics = model.evaluate(test_data, verbose=0)
     ev_dict = dict(zip(model.metrics_names, ev_metrics))
     return {
-        'f1': ev_dict['f1_macro'],
-        'precision': ev_dict['precision_macro'],
-        'recall': ev_dict['recall_macro'],
+        'f1': ev_dict['f1'],
+        'precision': ev_dict['precision'],
+        'recall': ev_dict['recall'],
     }
 
 
