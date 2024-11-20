@@ -9,8 +9,7 @@ def load_data(
         total_folds: int,
         class_names: list[str],
         batch_size: int,
-        image_size: int,
-        buffer_size: int
+        image_size: int
 ) -> tuple:
     def load_fold(fold_num):
         fold_dir = data_dir / f"cv{fold_num}"
@@ -37,7 +36,7 @@ def load_data(
     for ds in train_folds_data[1:]:
         train_data = train_data.concatenate(ds)
 
-    train_data = train_data.shuffle(buffer_size=buffer_size).cache().prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-    val_data = val_data.shuffle(buffer_size=buffer_size).cache().prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+    train_data = train_data.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+    val_data = val_data.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
     return train_data, val_data
