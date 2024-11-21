@@ -1,5 +1,7 @@
 /data/
 /crop/
+/out/keras/
+/out/weights/
 
 /venv/
 /.venv/
